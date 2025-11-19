@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Counter dApp</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f3f4f6; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 360px; }
+    h1 { text-align: center; }
+    button { width: 100%; padding: 10px; margin: 6px 0; border: none; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #a5b4fc; cursor: not-allowed; }
+    p { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Simple Counter</h1>
+    <button id="connectBtn">Connect Phantom</button>
+    <button id="initBtn" disabled>Initialize Counter</button>
+    <button id="incBtn" disabled>Increment</button>
+    <button id="resetBtn" disabled>Reset</button>
+    <p><strong>Owner:</strong> <span id="owner">-</span></p>
+    <p><strong>Count:</strong> <span id="count">-</span></p>
+    <p style="font-size:12px;color:gray;">Replace PROGRAM_ID and IDL when your program is ready.</p>
+  </div>
+
+  <script type="module">
+    import * as anchor from "https://cdn.jsdelivr.net/npm/@project-serum/anchor/+esm";
+    import { Connection, PublicKey, SystemProgram, clusterApiUrl } from "https://cdn.jsdelivr.net/npm/@solana/web3.js/+esm";
+
+    const PROGRAM_ID = new PublicKey("REPLACE_WITH_YOUR_PROGRAM_ID"); // Replace with your program ID
+
+    const connectBtn = document.getElementById("connectBtn");
+    const initBtn = document.getElementById("initBtn");
+    const incBtn = document.getElementById("incBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const ownerSpan = document.getElementById("owner");
+    const countSpan = document.getElementById("count");
+
+    let provider, program, walletPublicKey;
+
+    async function getCounterPDA(pubKey) {
+      return await PublicKey.findProgramAddress([Buffer.from("counter"), pubKey.toBuffer()], PROGRAM_ID);
+    }
+
+    connectBtn.onclick = async () => {
+      if (!window.solana || !window.solana.isPhantom) { alert("Phantom not found"); return; }
+      const resp = await window.solana.connect();
+      walletPublicKey = resp.publicKey;
+      provider = new anchor.AnchorProvider(new Connection(clusterApiUrl("devnet")), window.solana, {});
+      anchor.setProvider(provider);
+      // Placeholder IDL for frontend demo
+      const IDL = { "version":"0.1.0", "name":"counter_program", "instructions":[{"name":"initialize","accounts":[{"name":"counter","isMut":true,"isSigner":false},{"name":"user","isMut":true,"isSigner":true},{"name":"systemProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"increment","accounts":[{"name":"counter","isMut":true,"isSigner":false}],"args":[]},{"name":"reset","accounts":[{"name":"counter","isMut":true,"isSigner":false},{"name":"user","isMut":true,"isSigner":true}],"args":[]}],"accounts":[{"name":"counter","type":{"kind":"struct","fields":[{"name":"owner","type":"publicKey"},{"name":"count","type":"u64"},{"name":"totalIncrements","type":"u64"},{"name":"createdAt","type":"i64"}]}}]};
+      program = new anchor.Program(IDL, PROGRAM_ID, provider);
+      connectBtn.innerText = "Connected";
+      initBtn.disabled = false; incBtn.disabled = false; resetBtn.disabled = false;
+      await refresh();
+    };
+
+    async function refresh() {
+      if (!walletPublicKey) return;
+      const [counterPDA] = await getCounterPDA(walletPublicKey);
+      try {
+        const account = await program.account.counter.fetch(counterPDA);
+        ownerSpan.innerText = account.owner.toString();
+        countSpan.innerText = account.count.toString();
+      } catch { ownerSpan.innerText = walletPublicKey.toString(); countSpan.innerText = "-"; }
+    }
+
+    initBtn.onclick = async () => {
+      const [counterPDA] = await getCounterPDA(walletPublicKey);
+      try { await program.rpc.initialize({ accounts:{ counter: counterPDA, user: walletPublicKey, systemProgram: SystemProgram.programId } }); await refresh(); } 
+      catch (err) { console.error(err); alert("Initialize failed"); }
+    };
+    incBtn.onclick = async () => {
+      const [counterPDA] = await getCounterPDA(walletPublicKey);
+      try { await program.rpc.increment({ accounts:{ counter: counterPDA } }); await refresh(); } 
+      catch (err) { console.error(err); alert("Increment failed"); }
+    };
+    resetBtn.onclick = async () => {
+      const [counterPDA] = await getCounterPDA(walletPublicKey);
+      try { await program.rpc.reset({ accounts:{ counter: counterPDA, user: walletPublicKey } }); await refresh(); } 
+      catch (err) { console.error(err); alert("Reset failed"); }
+    };
+  </script>
+</body>
+</html>
